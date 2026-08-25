@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Document Sanitizer</title>
+    <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="{{ url_for('static', filename='app.js') }}" defer></script>
+    </head>
+  <body>
+    <main class="card">
+      <div class="brand-mark" aria-hidden="true">
+        <span>✓</span>
+      </div>
+      <p class="product-name">Document Sanitizer</p>
+      <h1>Upload suspicious document</h1>
+      <p class="intro">The document will be scanned, stripped of active content, rebuilt, and scanned again.</p>
+
+      {% if error %}
+      <div class="message {{ 'danger' if danger else '' }}" role="alert">{{ error }}</div>
+      {% endif %}
+      <div id="status-message" class="message" role="status" hidden></div>
+
+      <form id="sanitize-form" action="{{ url_for('sanitize_upload') }}" method="post" enctype="multipart/form-data">
+        <label class="picker">
+          <span>Choose a document</span>
+          <input type="file" name="document" required accept=".pdf,.docx,.xlsx,.pptx,.odt,.ods,.odp">
+        </label>
+        <button id="sanitize-button" type="submit">Clean and download</button>
+      </form>
+
+      <p class="formats">PDF, DOCX, XLSX, PPTX, ODT, ODS, or ODP · Maximum {{ max_size_mb }} MB</p>
+      <p class="notice">The original is deleted after processing. Documents that cannot be safely reconstructed are rejected.</p>
+    </main>
+  </body>
+</html>

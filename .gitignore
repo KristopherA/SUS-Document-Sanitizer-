@@ -1,0 +1,13 @@
+# Real TLS material must never be committed.
+certs/*
+!certs/README.md
+!certs/*.example
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+.venv/
+
+# macOS
+.DS_Store
+

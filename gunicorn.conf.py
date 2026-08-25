@@ -1,0 +1,13 @@
+bind = "0.0.0.0:8080"
+workers = 2
+threads = 1
+timeout = 180
+graceful_timeout = 30
+keepalive = 2
+accesslog = "-"
+errorlog = "-"
+capture_output = True
+limit_request_line = 4094
+limit_request_fields = 50
+limit_request_field_size = 8190
+
