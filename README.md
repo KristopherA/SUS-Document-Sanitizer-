@@ -2,7 +2,7 @@
 
 A small, unauthenticated internal web service for uploading a suspicious document and downloading a reconstructed version in the same modern document format.
 
-For production installation, routine operations, upgrades, certificate renewal, and rollback, see the shared [Setup, maintenance, and upgrade guide](../SETUP_AND_MAINTENANCE.md). It covers both this generic edition and the UNA edition.
+For production installation, routine operations, upgrades, certificate renewal, and rollback, see the [Setup, maintenance, and upgrade guide](SETUP_AND_MAINTENANCE.md).
 
 The service is intentionally fail-closed: if antivirus is unavailable, the file is malformed, reconstruction fails, or active content remains, no download is returned.
 
