@@ -7,13 +7,15 @@ services:
     depends_on:
       clamav:
         condition: service_healthy
-    ports:
-      - "${SANITIZER_PORT:-8080}:8080"
     environment:
       CLAMAV_HOST: clamav
       CLAMAV_PORT: "3310"
       MAX_UPLOAD_BYTES: "52428800"
+      MAX_OUTPUT_BYTES: "209715200"
+      MAX_FORM_MEMORY_BYTES: "65536"
+      MAX_FORM_PARTS: "4"
       PROCESS_TIMEOUT_SECONDS: "120"
+      TRUSTED_HOSTS: "${SANITIZER_TRUSTED_HOSTS:-localhost,127.0.0.1}"
     read_only: true
     tmpfs:
       - /tmp:size=768m,mode=1777,noexec,nosuid,nodev
@@ -25,16 +27,48 @@ services:
     mem_limit: 2g
     cpus: 2.0
     networks:
-      - sanitizer_net
+      - processing_net
+
+  http-proxy:
+    image: nginx:1.30.4-alpine@sha256:97d490c12ba55b4946b01546d1c3ed324e8d41ab1c9fcb2a616aa470620e5b46
+    restart: unless-stopped
+    depends_on:
+      sanitizer:
+        condition: service_healthy
+    environment:
+      SANITIZER_HTTP_HOSTNAME: "${SANITIZER_HTTP_HOSTNAME:-localhost}"
+      SANITIZER_UPLOAD_RATE: "${SANITIZER_UPLOAD_RATE:-2r/m}"
+      SANITIZER_UPLOAD_BURST: "${SANITIZER_UPLOAD_BURST:-2}"
+    ports:
+      - "${SANITIZER_BIND_ADDRESS:-127.0.0.1}:${SANITIZER_PORT:-8080}:8080"
+    volumes:
+      - ./nginx/templates/http.conf.template:/etc/nginx/templates/http.conf.template:ro
+    read_only: true
+    user: "101:101"
+    tmpfs:
+      - /etc/nginx/conf.d:size=1m,uid=101,gid=101,mode=0750,nosuid,nodev,noexec
+      - /var/cache/nginx:size=16m,uid=101,gid=101,mode=0750,nosuid,nodev,noexec
+      - /var/run:size=2m,uid=101,gid=101,mode=0750,nosuid,nodev,noexec
+      - /tmp:size=8m,uid=101,gid=101,mode=0700,nosuid,nodev,noexec
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 32
+    mem_limit: 64m
+    cpus: 0.25
+    networks:
+      - processing_net
+      - frontend_net
 
   clamav:
-    image: clamav/clamav:1.5.4_base-debian13-slim
+    build:
+      context: .
+      dockerfile: Dockerfile.clamav
+    image: generic-document-sanitizer-clamav:local
     restart: unless-stopped
     expose:
       - "3310"
-    environment:
-      CLAMD_CONF_StreamMaxLength: "100M"
-      CLAMD_CONF_MaxScanSize: "500M"
     volumes:
       - clamav_signatures:/var/lib/clamav
     healthcheck:
@@ -45,21 +79,19 @@ services:
       start_period: 120s
     cap_drop:
       - ALL
-    cap_add:
-      - CHOWN
-      - DAC_OVERRIDE
-      - FOWNER
-      - SETGID
-      - SETUID
     security_opt:
       - no-new-privileges:true
     pids_limit: 128
     mem_limit: 2g
     networks:
-      - sanitizer_net
+      - processing_net
+      - signature_egress
 
 volumes:
   clamav_signatures:
 
 networks:
-  sanitizer_net:
+  processing_net:
+    internal: true
+  signature_egress:
+  frontend_net:

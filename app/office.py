@@ -19,6 +19,7 @@ MAX_UNCOMPRESSED_BYTES = 500 * 1024 * 1024
 MAX_XML_BYTES = 50 * 1024 * 1024
 MAX_COMPRESSION_RATIO = 200
 PROCESS_TIMEOUT = int(os.getenv("PROCESS_TIMEOUT_SECONDS", "120"))
+MAX_OUTPUT_BYTES = int(os.getenv("MAX_OUTPUT_BYTES", str(200 * 1024 * 1024)))
 
 DANGEROUS_PARTS = (
     "vbaproject",
@@ -57,6 +58,22 @@ DANGEROUS_CONTENT_TYPES = (
 
 DANGEROUS_FIELD = re.compile(r"\b(?:DDE|DDEAUTO)\b", re.IGNORECASE)
 
+PART_FINDINGS = (
+    (("vbaproject", "vbadata"), "Macros"),
+    (("activex/",), "ActiveX controls"),
+    (("embeddings/", "object ", "objects/", "oleobject", "package"), "Embedded files or objects"),
+    (("externallinks/", "externallink", "attachedtemplate", "hyperlink"), "External links or data connections"),
+    (("scripts/", "basic/", "customui/", "attachedtoolbars", "control"), "Scripts or event handlers"),
+    (("digitalsignatures/", "_xmlsignatures/"), "Digital signatures"),
+)
+
+
+def _record_part_finding(value: str, findings: set[str]) -> None:
+    lowered = value.lower()
+    for fragments, description in PART_FINDINGS:
+        if any(fragment in lowered for fragment in fragments):
+            findings.add(description)
+
 
 def _is_dangerous_part(name: str) -> bool:
     lowered = name.lower()
@@ -82,7 +99,7 @@ def _validate_archive(entries: list[zipfile.ZipInfo]) -> None:
             raise ProcessingFailed("The document contains a suspiciously compressed package entry.")
 
 
-def _clean_relationships(payload: bytes) -> bytes:
+def _clean_relationships(payload: bytes, findings: set[str]) -> bytes:
     try:
         root = ET.fromstring(payload)
     except ET.ParseError as exc:
@@ -94,12 +111,15 @@ def _clean_relationships(payload: bytes) -> bytes:
         external = relation.attrib.get("TargetMode", "").lower() == "external"
         target = relation.attrib.get("Target", "").lower()
         if external or _is_dangerous_part(target) or any(value in rel_type for value in DANGEROUS_REL_TYPES):
+            _record_part_finding(f"{rel_type} {target}", findings)
+            if external:
+                findings.add("External links or data connections")
             root.remove(relation)
             changed = True
     return _serialize_xml(root, payload) if changed else payload
 
 
-def _clean_content_types(payload: bytes) -> bytes:
+def _clean_content_types(payload: bytes, findings: set[str]) -> bytes:
     try:
         root = ET.fromstring(payload)
     except ET.ParseError as exc:
@@ -110,6 +130,7 @@ def _clean_content_types(payload: bytes) -> bytes:
         part = item.attrib.get("PartName", "").lower()
         content_type = item.attrib.get("ContentType", "").lower()
         if _is_dangerous_part(part) or any(value in content_type for value in DANGEROUS_CONTENT_TYPES):
+            _record_part_finding(f"{part} {content_type}", findings)
             root.remove(item)
             changed = True
     return _serialize_xml(root, payload) if changed else payload
@@ -127,7 +148,7 @@ def _serialize_xml(root: ET.Element, original: bytes) -> bytes:
     return ET.tostring(root, encoding="utf-8", xml_declaration=True)
 
 
-def _clean_document_xml(payload: bytes) -> bytes:
+def _clean_document_xml(payload: bytes, findings: set[str]) -> bytes:
     # DDE fields are commands stored as text inside otherwise ordinary document XML.
     if len(payload) > MAX_XML_BYTES:
         raise ProcessingFailed("An XML component in the document is too large to inspect safely.")
@@ -139,12 +160,14 @@ def _clean_document_xml(payload: bytes) -> bytes:
     for element in root.iter():
         if element.text and DANGEROUS_FIELD.search(element.text):
             element.text = "[unsafe dynamic field removed]"
+            findings.add("Dynamic DDE fields")
             changed = True
         # ODF event handlers and script elements can execute code when a file
         # is opened. ElementTree represents namespaced tags as {uri}name.
         local_name = element.tag.rsplit("}", 1)[-1].lower() if isinstance(element.tag, str) else ""
         if local_name in {"event-listener", "script"}:
             element.clear()
+            findings.add("Scripts or event handlers")
             changed = True
         for attribute in list(element.attrib):
             attribute_name = attribute.rsplit("}", 1)[-1].lower()
@@ -154,12 +177,14 @@ def _clean_document_xml(payload: bytes) -> bytes:
                 or value.lower().startswith(("http:", "https:", "file:", "ftp:", "javascript:", "data:"))
             ):
                 del element.attrib[attribute]
+                findings.add("External links or data connections" if attribute_name == "href" else "Scripts or event handlers")
                 changed = True
     return _serialize_xml(root, payload) if changed else payload
 
 
-def strip_active_content(source: Path, destination: Path) -> None:
+def strip_active_content(source: Path, destination: Path) -> set[str]:
     """Create an inert package for LibreOffice to reconstruct."""
+    findings: set[str] = set()
     try:
         with zipfile.ZipFile(source, "r") as incoming:
             entries = incoming.infolist()
@@ -170,15 +195,17 @@ def strip_active_content(source: Path, destination: Path) -> None:
                 for entry in ordered_entries:
                     name = entry.filename
                     if entry.is_dir() or _is_dangerous_part(name):
+                        if not entry.is_dir():
+                            _record_part_finding(name, findings)
                         continue
                     payload = incoming.read(entry)
                     lowered = name.lower()
                     if lowered.endswith(".rels"):
-                        payload = _clean_relationships(payload)
+                        payload = _clean_relationships(payload, findings)
                     elif lowered == "[content_types].xml":
-                        payload = _clean_content_types(payload)
+                        payload = _clean_content_types(payload, findings)
                     elif lowered.endswith(".xml"):
-                        payload = _clean_document_xml(payload)
+                        payload = _clean_document_xml(payload, findings)
 
                     clean_entry = zipfile.ZipInfo(name, date_time=entry.date_time)
                     clean_entry.compress_type = zipfile.ZIP_STORED if name == "mimetype" else zipfile.ZIP_DEFLATED
@@ -186,6 +213,7 @@ def strip_active_content(source: Path, destination: Path) -> None:
                     outgoing.writestr(clean_entry, payload)
     except zipfile.BadZipFile as exc:
         raise ProcessingFailed("The Office document package is invalid.") from exc
+    return findings
 
 
 def _run(command: list[str], description: str, home: Path) -> None:
@@ -206,7 +234,7 @@ def _run(command: list[str], description: str, home: Path) -> None:
         raise ProcessingFailed(f"{description} failed; the document may be damaged or password-protected.")
 
 
-def sanitize_office(source: Path, destination: Path, document_format: DocumentFormat) -> None:
+def sanitize_office(source: Path, destination: Path, document_format: DocumentFormat) -> list[str]:
     with tempfile.TemporaryDirectory(prefix="office-") as work_dir_name:
         work_dir = Path(work_dir_name)
         stripped = work_dir / f"input{document_format.extension}"
@@ -217,7 +245,7 @@ def sanitize_office(source: Path, destination: Path, document_format: DocumentFo
         profile_dir.mkdir()
         home_dir.mkdir()
 
-        strip_active_content(source, stripped)
+        findings = strip_active_content(source, stripped)
         _run(
             [
                 "libreoffice",
@@ -242,9 +270,14 @@ def sanitize_office(source: Path, destination: Path, document_format: DocumentFo
         rebuilt = output_dir / stripped.name
         if not rebuilt.is_file() or rebuilt.stat().st_size == 0:
             raise ProcessingFailed("LibreOffice did not produce a reconstructed document.")
+        if rebuilt.stat().st_size > MAX_OUTPUT_BYTES:
+            raise ProcessingFailed("The reconstructed document is too large to return safely.")
 
         # A second package pass verifies the rebuilt output and removes anything
         # the converter unexpectedly retained or generated.
         verified = work_dir / f"verified{document_format.extension}"
-        strip_active_content(rebuilt, verified)
+        findings.update(strip_active_content(rebuilt, verified))
+        if verified.stat().st_size > MAX_OUTPUT_BYTES:
+            raise ProcessingFailed("The verified document is too large to return safely.")
         shutil.copyfile(verified, destination)
+        return sorted(findings)

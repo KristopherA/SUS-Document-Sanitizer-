@@ -13,11 +13,17 @@ from .sanitizer import sanitize
 
 
 MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", str(50 * 1024 * 1024)))
+MAX_FORM_MEMORY_BYTES = int(os.getenv("MAX_FORM_MEMORY_BYTES", str(64 * 1024)))
+MAX_FORM_PARTS = int(os.getenv("MAX_FORM_PARTS", "4"))
+TRUSTED_HOSTS = [host.strip() for host in os.getenv("TRUSTED_HOSTS", "localhost,127.0.0.1").split(",") if host.strip()]
 
 
 def create_app() -> Flask:
     app = Flask(__name__)
     app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_BYTES
+    app.config["MAX_FORM_MEMORY_SIZE"] = MAX_FORM_MEMORY_BYTES
+    app.config["MAX_FORM_PARTS"] = MAX_FORM_PARTS
+    app.config["TRUSTED_HOSTS"] = TRUSTED_HOSTS
 
     @app.after_request
     def security_headers(response):
@@ -25,6 +31,8 @@ def create_app() -> Flask:
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+        response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
         response.headers["Cache-Control"] = "no-store"
         return response
 
@@ -50,7 +58,7 @@ def create_app() -> Flask:
         try:
             document_format = detect(source, uploaded.filename)
             destination = work_dir / f"clean{document_format.extension}"
-            sanitize(source, destination, document_format)
+            findings = sanitize(source, destination, document_format)
         except MalwareDetected as exc:
             temp_dir.cleanup()
             return render_template("index.html", error=str(exc), danger=True, max_size_mb=MAX_UPLOAD_BYTES // (1024 * 1024)), 422
@@ -65,7 +73,10 @@ def create_app() -> Flask:
             temp_dir.cleanup()
             return response
 
-        return send_file(destination, as_attachment=True, download_name=download_name, max_age=0)
+        response = send_file(destination, as_attachment=True, download_name=download_name, max_age=0)
+        response.headers["X-Sanitization-Status"] = "clean"
+        response.headers["X-Sanitization-Findings"] = ", ".join(findings)
+        return response
 
     @app.errorhandler(RequestEntityTooLarge)
     def too_large(_error):

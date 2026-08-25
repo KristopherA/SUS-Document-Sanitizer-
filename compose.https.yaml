@@ -1,29 +1,40 @@
 services:
+  sanitizer:
+    ports: !reset []
+    environment:
+      TRUSTED_HOSTS: "${SANITIZER_HOSTNAME:-sanitizer.example.org},localhost,127.0.0.1"
+
   tls-proxy:
-    image: nginx:1.28-alpine
+    image: nginx:1.30.4-alpine@sha256:97d490c12ba55b4946b01546d1c3ed324e8d41ab1c9fcb2a616aa470620e5b46
     restart: unless-stopped
     depends_on:
       sanitizer:
         condition: service_healthy
     environment:
       SANITIZER_HOSTNAME: "${SANITIZER_HOSTNAME:-sanitizer.example.org}"
+      SANITIZER_UPLOAD_RATE: "${SANITIZER_UPLOAD_RATE:-2r/m}"
+      SANITIZER_UPLOAD_BURST: "${SANITIZER_UPLOAD_BURST:-2}"
     ports:
-      - "${SANITIZER_HTTP_PORT:-80}:80"
-      - "${SANITIZER_HTTPS_PORT:-443}:443"
+      - "${SANITIZER_HTTP_PORT:-80}:8080"
+      - "${SANITIZER_HTTPS_PORT:-443}:8443"
     volumes:
       - ./nginx/templates/sanitizer.conf.template:/etc/nginx/templates/sanitizer.conf.template:ro
       - ./certs/fullchain.pem:/etc/nginx/tls/fullchain.pem:ro
       - ./certs/privkey.pem:/etc/nginx/tls/privkey.pem:ro
     read_only: true
+    user: "101:101"
     tmpfs:
-      - /etc/nginx/conf.d:size=1m,nosuid,nodev
-      - /var/cache/nginx:size=32m,nosuid,nodev
-      - /var/run:size=2m,nosuid,nodev
-      - /tmp:size=16m,nosuid,nodev
+      - /etc/nginx/conf.d:size=1m,uid=101,gid=101,mode=0750,nosuid,nodev,noexec
+      - /var/cache/nginx:size=64m,uid=101,gid=101,mode=0750,nosuid,nodev,noexec
+      - /var/run:size=2m,uid=101,gid=101,mode=0750,nosuid,nodev,noexec
+      - /tmp:size=16m,uid=101,gid=101,mode=0700,nosuid,nodev,noexec
+    cap_drop:
+      - ALL
     security_opt:
       - no-new-privileges:true
     pids_limit: 64
     mem_limit: 128m
     cpus: 0.5
     networks:
-      - sanitizer_net
+      - processing_net
+      - frontend_net

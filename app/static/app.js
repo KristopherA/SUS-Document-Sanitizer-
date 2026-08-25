@@ -36,6 +36,7 @@ if (sanitizeForm && sanitizeButton) {
         throw new Error(serverMessage || "The document could not be sanitized.");
       }
 
+      const findings = response.headers.get("X-Sanitization-Findings")?.trim();
       const download = document.createElement("a");
       const objectUrl = URL.createObjectURL(await response.blob());
       download.href = objectUrl;
@@ -47,7 +48,14 @@ if (sanitizeForm && sanitizeButton) {
       window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
 
       sanitizeForm.reset();
-      showStatus("The clean document has been downloaded.", "success");
+      if (findings) {
+        showStatus(`Document cleaned and downloaded. Issues found and removed: ${findings}.`, "success");
+      } else {
+        showStatus(
+          "Document cleaned and downloaded. No active content was detected; the rebuilt document passed antivirus scanning.",
+          "success",
+        );
+      }
     } catch (error) {
       showStatus(error instanceof Error ? error.message : "The document could not be sanitized.", "danger");
     } finally {

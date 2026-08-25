@@ -7,7 +7,8 @@ keepalive = 2
 accesslog = "-"
 errorlog = "-"
 capture_output = True
+max_requests = 25
+max_requests_jitter = 5
 limit_request_line = 4094
 limit_request_fields = 50
 limit_request_field_size = 8190
-
