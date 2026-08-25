@@ -57,7 +57,15 @@ form { display: grid; gap: 14px; }
   cursor: pointer;
 }
 
-.picker:hover { border-color: #2563a8; background: #f0f5fb; }
+.picker:hover,
+.picker:focus-within,
+.picker.dragging {
+  border-color: #2563a8;
+  background: #e7f1fc;
+}
+.picker.dragging { border-style: solid; box-shadow: 0 0 0 4px rgba(37, 99, 168, 0.12); }
+.picker-title { display: block; }
+.picker-instruction { display: block; margin-top: 5px; color: #65758a; font-size: 0.86rem; font-weight: 500; }
 .picker input { display: block; width: 100%; margin-top: 14px; font: inherit; font-weight: 400; color: #4e5b6c; }
 
 button {
@@ -88,6 +96,15 @@ button:focus-visible, input:focus-visible { outline: 3px solid #9bc3eb; outline-
 
 .message.danger { border-color: #df8b8b; color: #761b1b; background: #fff1f1; }
 .message.success { border-color: #8fc5a8; color: #155f3d; background: #eff9f3; }
+.discard-notice {
+  margin: -12px 0 22px;
+  padding: 13px 16px;
+  border: 2px solid #b42318;
+  border-radius: 10px;
+  color: #761b1b;
+  background: #fff1f1;
+  font-weight: 800;
+}
 [hidden] { display: none !important; }
 .formats { margin: 22px 0 8px; color: #66736d; font-size: 0.84rem; }
 .notice { margin: 0; color: #7d8782; font-size: 0.78rem; line-height: 1.5; }

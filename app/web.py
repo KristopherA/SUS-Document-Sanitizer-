@@ -61,10 +61,13 @@ def create_app() -> Flask:
             findings = sanitize(source, destination, document_format)
         except MalwareDetected as exc:
             temp_dir.cleanup()
-            return render_template("index.html", error=str(exc), danger=True, max_size_mb=MAX_UPLOAD_BYTES // (1024 * 1024)), 422
-        except (UnsupportedDocument, ScannerUnavailable, SanitizationError) as exc:
+            return render_template("index.html", error=str(exc), danger=True, discard=True, max_size_mb=MAX_UPLOAD_BYTES // (1024 * 1024)), 422
+        except ScannerUnavailable as exc:
             temp_dir.cleanup()
             return render_template("index.html", error=str(exc), max_size_mb=MAX_UPLOAD_BYTES // (1024 * 1024)), 422
+        except (UnsupportedDocument, SanitizationError) as exc:
+            temp_dir.cleanup()
+            return render_template("index.html", error=str(exc), discard=True, max_size_mb=MAX_UPLOAD_BYTES // (1024 * 1024)), 422
 
         download_name = safe_download_name(uploaded.filename, document_format.extension)
 

@@ -115,6 +115,9 @@ def sanitize_pdf(source: Path, destination: Path) -> list[str]:
     with tempfile.TemporaryDirectory(prefix="pdf-check-") as check_dir:
         expanded = Path(check_dir) / "expanded.pdf"
         _expand_for_inspection(destination, expanded)
-        if _contains_active_marker(expanded):
-            raise ProcessingFailed("Active PDF content remained after reconstruction, so the document was rejected.")
+        remaining_features = sorted(_active_pdf_features(expanded))
+        if remaining_features:
+            raise ProcessingFailed(
+                f"Active PDF content remained after reconstruction ({', '.join(remaining_features)}), so the document was rejected."
+            )
     return sorted(findings)

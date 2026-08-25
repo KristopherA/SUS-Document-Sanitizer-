@@ -80,6 +80,12 @@ def _is_dangerous_part(name: str) -> bool:
     return any(fragment in lowered for fragment in DANGEROUS_PARTS)
 
 
+def _is_dangerous_relationship(rel_type: str) -> bool:
+    """Match the relationship name, not words in its standards namespace URL."""
+    relationship_name = rel_type.lower().rsplit("/", 1)[-1]
+    return relationship_name in DANGEROUS_REL_TYPES
+
+
 def _safe_zip_name(name: str) -> bool:
     path = PurePosixPath(name)
     return not path.is_absolute() and ".." not in path.parts and "\\" not in name
@@ -110,7 +116,7 @@ def _clean_relationships(payload: bytes, findings: set[str]) -> bytes:
         rel_type = relation.attrib.get("Type", "").lower()
         external = relation.attrib.get("TargetMode", "").lower() == "external"
         target = relation.attrib.get("Target", "").lower()
-        if external or _is_dangerous_part(target) or any(value in rel_type for value in DANGEROUS_REL_TYPES):
+        if external or _is_dangerous_part(target) or _is_dangerous_relationship(rel_type):
             _record_part_finding(f"{rel_type} {target}", findings)
             if external:
                 findings.add("External links or data connections")
@@ -157,17 +163,19 @@ def _clean_document_xml(payload: bytes, findings: set[str]) -> bytes:
     except ET.ParseError:
         return payload
     changed = False
+    # Remove active elements from their parent. Clearing an ODF office:script
+    # node leaves an invalid empty shell because its language is required.
+    for parent in root.iter():
+        for child in list(parent):
+            child_name = child.tag.rsplit("}", 1)[-1].lower() if isinstance(child.tag, str) else ""
+            if child_name in {"event-listener", "script"}:
+                parent.remove(child)
+                findings.add("Scripts or event handlers")
+                changed = True
     for element in root.iter():
         if element.text and DANGEROUS_FIELD.search(element.text):
             element.text = "[unsafe dynamic field removed]"
             findings.add("Dynamic DDE fields")
-            changed = True
-        # ODF event handlers and script elements can execute code when a file
-        # is opened. ElementTree represents namespaced tags as {uri}name.
-        local_name = element.tag.rsplit("}", 1)[-1].lower() if isinstance(element.tag, str) else ""
-        if local_name in {"event-listener", "script"}:
-            element.clear()
-            findings.add("Scripts or event handlers")
             changed = True
         for attribute in list(element.attrib):
             attribute_name = attribute.rsplit("}", 1)[-1].lower()

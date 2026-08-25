@@ -20,12 +20,16 @@
       {% if error %}
       <div class="message {{ 'danger' if danger else '' }}" role="alert">{{ error }}</div>
       {% endif %}
+      {% if discard %}
+      <div class="discard-notice" role="alert">Discard this document.</div>
+      {% endif %}
       <div id="status-message" class="message" role="status" hidden></div>
 
       <form id="sanitize-form" action="{{ url_for('sanitize_upload') }}" method="post" enctype="multipart/form-data">
-        <label class="picker">
-          <span>Choose a document</span>
-          <input type="file" name="document" required accept=".pdf,.docx,.xlsx,.pptx,.odt,.ods,.odp">
+        <label id="drop-zone" class="picker">
+          <span class="picker-title">Choose a document</span>
+          <span class="picker-instruction">or drag and drop it here</span>
+          <input id="document-input" type="file" name="document" required accept=".pdf,.docx,.xlsx,.pptx,.odt,.ods,.odp">
         </label>
         <button id="sanitize-button" type="submit">Clean and download</button>
       </form>

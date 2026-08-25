@@ -2,6 +2,7 @@ import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+from xml.etree import ElementTree as ET
 
 from app.errors import ProcessingFailed, UnsupportedDocument
 from app.formats import detect, safe_download_name
@@ -28,6 +29,46 @@ class FormatTests(unittest.TestCase):
 
 
 class OfficePackageTests(unittest.TestCase):
+    def test_odf_script_element_is_removed_entirely(self):
+        content = b'''<?xml version="1.0" encoding="UTF-8"?>
+        <office:document-content
+          xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+          xmlns:script="urn:oasis:names:tc:opendocument:xmlns:script:1.0">
+          <office:scripts><office:script script:language="BenignTest">no-op</office:script></office:scripts>
+          <office:body><office:text/></office:body>
+        </office:document-content>'''
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "source.odt"
+            clean = Path(directory) / "clean.odt"
+            with zipfile.ZipFile(source, "w") as package:
+                package.writestr("mimetype", "application/vnd.oasis.opendocument.text")
+                package.writestr("content.xml", content)
+
+            findings = strip_active_content(source, clean)
+
+            self.assertEqual(findings, {"Scripts or event handlers"})
+            with zipfile.ZipFile(clean) as package:
+                root = ET.fromstring(package.read("content.xml"))
+                self.assertFalse(any(element.tag.rsplit("}", 1)[-1] == "script" for element in root.iter()))
+
+    def test_standard_package_relationship_is_not_removed_or_reported(self):
+        relationships = b'''<?xml version="1.0" encoding="UTF-8"?>
+        <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+          <Relationship Id="core" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
+        </Relationships>'''
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "source.docx"
+            clean = Path(directory) / "clean.docx"
+            with zipfile.ZipFile(source, "w") as package:
+                package.writestr("_rels/.rels", relationships)
+                package.writestr("word/document.xml", b"<document>hello</document>")
+
+            findings = strip_active_content(source, clean)
+
+            self.assertEqual(findings, set())
+            with zipfile.ZipFile(clean) as package:
+                self.assertIn(b"core-properties", package.read("_rels/.rels"))
+
     def test_archive_path_traversal_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
             source = Path(directory) / "source.docx"
