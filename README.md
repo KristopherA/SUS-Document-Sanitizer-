@@ -78,7 +78,8 @@ Settings are in `compose.yaml`:
 
 - `MAX_UPLOAD_BYTES`: maximum document size after multipart parsing; default 50 MB.
 - `MAX_REQUEST_BYTES`: maximum multipart HTTP request size; default 64 MB, leaving room for upload framing while the document itself remains limited to 50 MB.
-- `MAX_OUTPUT_BYTES`: maximum reconstructed or expanded output size; default 200 MB.
+- `MAX_OUTPUT_BYTES`: maximum reconstructed document size; default 200 MB.
+- `MAX_PDF_INSPECTION_BYTES`: maximum PDF structural metadata size used for active-content inspection; default 64 MB. Image and content stream data are excluded from this representation.
 - `MAX_FORM_MEMORY_BYTES` and `MAX_FORM_PARTS`: multipart parser limits; defaults 500 KB and 4 parts.
 - `PROCESS_TIMEOUT_SECONDS`: reconstruction timeout; default 120 seconds.
 - `CLAMAV_TIMEOUT_SECONDS`: optional antivirus scan timeout; default 120 seconds.

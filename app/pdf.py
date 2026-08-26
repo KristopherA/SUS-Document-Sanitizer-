@@ -11,6 +11,9 @@ from .errors import ProcessingFailed
 
 PROCESS_TIMEOUT = int(os.getenv("PROCESS_TIMEOUT_SECONDS", "120"))
 MAX_OUTPUT_BYTES = int(os.getenv("MAX_OUTPUT_BYTES", str(200 * 1024 * 1024)))
+MAX_PDF_INSPECTION_BYTES = int(
+    os.getenv("MAX_PDF_INSPECTION_BYTES", str(64 * 1024 * 1024))
+)
 ACTIVE_PDF_MARKERS = re.compile(
     rb"/(JavaScript|JS|OpenAction|AA|Launch|RichMedia|EmbeddedFiles|XFA)\b",
     re.IGNORECASE,
@@ -29,7 +32,7 @@ PDF_FINDINGS = {
 
 
 def _active_pdf_features(path: Path) -> set[str]:
-    """Identify active features in an expanded PDF without loading it all into memory."""
+    """Identify active PDF dictionary names without loading the file into memory."""
     findings: set[str] = set()
     overlap = b""
     with path.open("rb") as source:
@@ -45,28 +48,31 @@ def _contains_active_marker(path: Path) -> bool:
     return bool(_active_pdf_features(path))
 
 
-def _expand_for_inspection(source: Path, destination: Path) -> None:
+def _write_pdf_structure(source: Path, destination: Path) -> None:
+    """Write PDF objects as JSON while omitting potentially huge stream payloads."""
     try:
-        expansion = subprocess.run(
-            ["qpdf", "--qdf", "--object-streams=disable", str(source), str(destination)],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            timeout=30,
-            check=False,
-        )
+        with destination.open("wb") as structure:
+            inspection = subprocess.run(
+                ["qpdf", "--json", "--json-stream-data=none", str(source)],
+                stdin=subprocess.DEVNULL,
+                stdout=structure,
+                stderr=subprocess.DEVNULL,
+                timeout=30,
+                check=False,
+            )
     except subprocess.TimeoutExpired as exc:
         raise ProcessingFailed("The PDF inspection timed out; the document was rejected.") from exc
-    if expansion.returncode not in (0, 3) or not destination.is_file():
+    if inspection.returncode not in (0, 3) or not destination.is_file() or destination.stat().st_size == 0:
         raise ProcessingFailed("The PDF could not be inspected safely.")
-    if destination.stat().st_size > MAX_OUTPUT_BYTES:
-        raise ProcessingFailed("The expanded PDF is too large to inspect safely.")
+    if destination.stat().st_size > MAX_PDF_INSPECTION_BYTES:
+        raise ProcessingFailed("The PDF contains too much structural metadata to inspect safely.")
 
 
 def sanitize_pdf(source: Path, destination: Path) -> list[str]:
     with tempfile.TemporaryDirectory(prefix="pdf-source-check-") as source_check_dir:
-        expanded_source = Path(source_check_dir) / "expanded.pdf"
-        _expand_for_inspection(source, expanded_source)
-        findings = _active_pdf_features(expanded_source)
+        source_structure = Path(source_check_dir) / "structure.json"
+        _write_pdf_structure(source, source_structure)
+        findings = _active_pdf_features(source_structure)
 
     command = [
         "gs",
@@ -110,12 +116,12 @@ def sanitize_pdf(source: Path, destination: Path) -> list[str]:
     if validation.returncode not in (0, 3):
         raise ProcessingFailed("The reconstructed PDF did not pass structural validation.")
 
-    # Expand object streams before looking for active PDF dictionaries; direct
-    # byte searching can miss names hidden inside compressed object streams.
+    # qpdf's JSON representation exposes names stored in compressed object
+    # streams while omitting image and content stream payloads.
     with tempfile.TemporaryDirectory(prefix="pdf-check-") as check_dir:
-        expanded = Path(check_dir) / "expanded.pdf"
-        _expand_for_inspection(destination, expanded)
-        remaining_features = sorted(_active_pdf_features(expanded))
+        rebuilt_structure = Path(check_dir) / "structure.json"
+        _write_pdf_structure(destination, rebuilt_structure)
+        remaining_features = sorted(_active_pdf_features(rebuilt_structure))
         if remaining_features:
             raise ProcessingFailed(
                 f"Active PDF content remained after reconstruction ({', '.join(remaining_features)}), so the document was rejected."

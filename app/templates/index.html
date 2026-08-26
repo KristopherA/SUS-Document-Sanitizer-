@@ -24,6 +24,7 @@
       <div class="discard-notice" role="alert">Discard this document.</div>
       {% endif %}
       <div id="status-message" class="message" role="status" hidden></div>
+      <div id="systems-notice" class="systems-notice" role="alert"{% if not systems_notice %} hidden{% endif %}>The original document should be sent to Systems for further analysis.</div>
 
       <form id="sanitize-form" action="{{ url_for('sanitize_upload') }}" method="post" enctype="multipart/form-data">
         <label id="drop-zone" class="picker">

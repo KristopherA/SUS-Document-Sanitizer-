@@ -72,7 +72,14 @@ def create_app() -> Flask:
             findings = sanitize(source, destination, document_format)
         except MalwareDetected as exc:
             temp_dir.cleanup()
-            return render_template("index.html", error=str(exc), danger=True, discard=True, max_size_mb=MAX_UPLOAD_BYTES // (1024 * 1024)), 422
+            return render_template(
+                "index.html",
+                error=str(exc),
+                danger=True,
+                discard=True,
+                systems_notice=True,
+                max_size_mb=MAX_UPLOAD_BYTES // (1024 * 1024),
+            ), 422
         except ScannerUnavailable as exc:
             temp_dir.cleanup()
             return render_template("index.html", error=str(exc), max_size_mb=MAX_UPLOAD_BYTES // (1024 * 1024)), 422

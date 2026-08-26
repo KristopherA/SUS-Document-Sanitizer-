@@ -3,6 +3,7 @@
 const sanitizeForm = document.getElementById("sanitize-form");
 const sanitizeButton = document.getElementById("sanitize-button");
 const statusMessage = document.getElementById("status-message");
+const systemsNotice = document.getElementById("systems-notice");
 const dropZone = document.getElementById("drop-zone");
 const documentInput = document.getElementById("document-input");
 
@@ -52,6 +53,7 @@ if (sanitizeForm && sanitizeButton) {
   sanitizeForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     if (statusMessage) statusMessage.hidden = true;
+    if (systemsNotice) systemsNotice.hidden = true;
     sanitizeButton.disabled = true;
     sanitizeButton.textContent = "Scanning and rebuilding…";
 
@@ -65,6 +67,8 @@ if (sanitizeForm && sanitizeButton) {
         const errorPage = new DOMParser().parseFromString(await response.text(), "text/html");
         const serverMessage = errorPage.querySelector(".message")?.textContent?.trim();
         const discardNotice = errorPage.querySelector(".discard-notice")?.textContent?.trim();
+        const systemsNoticeText = errorPage.querySelector(".systems-notice:not([hidden])")?.textContent?.trim();
+        if (systemsNoticeText && systemsNotice) systemsNotice.hidden = false;
         throw new Error(
           [serverMessage, discardNotice].filter(Boolean).join(" ") || "The document could not be sanitized.",
         );
@@ -85,6 +89,7 @@ if (sanitizeForm && sanitizeButton) {
       dropZone?.classList.remove("dragging");
       if (findings) {
         showStatus(`Document cleaned and downloaded. Issues found and removed: ${findings}.`, "success");
+        if (systemsNotice) systemsNotice.hidden = false;
       } else {
         showStatus(
           "Document cleaned and downloaded. No active content was detected; the rebuilt document passed antivirus scanning.",

@@ -2,12 +2,14 @@ import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 from xml.etree import ElementTree as ET
 
 from app.errors import ProcessingFailed, UnsupportedDocument
 from app.formats import detect, safe_download_name
 from app.office import strip_active_content
-from app.pdf import _active_pdf_features, _contains_active_marker
+from app.pdf import _active_pdf_features, _contains_active_marker, _write_pdf_structure
 
 
 class FormatTests(unittest.TestCase):
@@ -117,6 +119,41 @@ class OfficePackageTests(unittest.TestCase):
 
 
 class PdfInspectionTests(unittest.TestCase):
+    def test_pdf_structure_uses_json_without_stream_payloads(self):
+        captured_command = []
+
+        def fake_run(command, **kwargs):
+            captured_command.extend(command)
+            kwargs["stdout"].write(b'{"obj:1 0 R":{"value":{"/S":"/JavaScript"}}}')
+            return SimpleNamespace(returncode=0)
+
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "source.pdf"
+            structure = Path(directory) / "structure.json"
+            source.write_bytes(b"%PDF-1.7\n")
+            with patch("app.pdf.subprocess.run", side_effect=fake_run):
+                _write_pdf_structure(source, structure)
+
+            self.assertIn("--json", captured_command)
+            self.assertIn("--json-stream-data=none", captured_command)
+            self.assertNotIn("--qdf", captured_command)
+            self.assertEqual(_active_pdf_features(structure), {"PDF JavaScript"})
+
+    def test_oversized_pdf_structure_is_rejected(self):
+        def fake_run(_command, **kwargs):
+            kwargs["stdout"].write(b"01234567890")
+            return SimpleNamespace(returncode=0)
+
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "source.pdf"
+            structure = Path(directory) / "structure.json"
+            source.write_bytes(b"%PDF-1.7\n")
+            with patch("app.pdf.MAX_PDF_INSPECTION_BYTES", 10), patch(
+                "app.pdf.subprocess.run", side_effect=fake_run
+            ):
+                with self.assertRaisesRegex(ProcessingFailed, "structural metadata"):
+                    _write_pdf_structure(source, structure)
+
     def test_active_marker_across_read_boundary_is_detected(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "expanded.pdf"

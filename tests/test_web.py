@@ -3,7 +3,7 @@ from io import BytesIO
 from unittest.mock import patch
 
 try:
-    from app.errors import ProcessingFailed, ScannerUnavailable
+    from app.errors import MalwareDetected, ProcessingFailed, ScannerUnavailable
     from app.web import create_app
 except ModuleNotFoundError as exc:
     if exc.name != "flask":
@@ -93,6 +93,24 @@ class SanitizationResponseTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b'id="drop-zone"', response.data)
         self.assertIn(b"or drag and drop it here", response.data)
+        self.assertIn(
+            b'id="systems-notice" class="systems-notice" role="alert" hidden',
+            response.data,
+        )
+
+    def test_malware_detection_shows_systems_analysis_notice(self):
+        with patch("app.web.sanitize", side_effect=MalwareDetected("Malware was detected.")):
+            response = self.client.post(
+                "/sanitize",
+                data={"document": (BytesIO(b"%PDF-1.7\nsource"), "report.pdf")},
+                content_type="multipart/form-data",
+            )
+
+        self.assertEqual(response.status_code, 422)
+        self.assertIn(
+            b'id="systems-notice" class="systems-notice" role="alert">The original document should be sent to Systems for further analysis.',
+            response.data,
+        )
 
     def test_unsanitizable_document_shows_discard_notice(self):
         with patch("app.web.sanitize", side_effect=ProcessingFailed("The document could not be rebuilt safely.")):

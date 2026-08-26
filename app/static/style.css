@@ -96,6 +96,16 @@ button:focus-visible, input:focus-visible { outline: 3px solid #9bc3eb; outline-
 
 .message.danger { border-color: #df8b8b; color: #761b1b; background: #fff1f1; }
 .message.success { border-color: #8fc5a8; color: #155f3d; background: #eff9f3; }
+.systems-notice {
+  margin: -10px 0 22px;
+  padding: 14px 16px;
+  border: 2px solid #d18b18;
+  border-radius: 10px;
+  color: #6b4606;
+  background: #fff8e9;
+  font-weight: 750;
+  line-height: 1.45;
+}
 .discard-notice {
   margin: -12px 0 22px;
   padding: 13px 16px;
