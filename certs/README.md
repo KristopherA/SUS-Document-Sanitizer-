@@ -10,8 +10,10 @@ The real files are excluded by `.gitignore`. Do not commit, email, or copy the p
 Recommended host permissions:
 
 ```sh
+chown root:root certs/fullchain.pem
 chmod 0644 certs/fullchain.pem
-chmod 0600 certs/privkey.pem
+chown root:101 certs/privkey.pem
+chmod 0640 certs/privkey.pem
 ```
 
-The `.example` files are intentionally invalid placeholders. The HTTPS proxy will not be started by the normal `docker compose up` command.
+Group `101` allows the unprivileged nginx container to read the key. The `.example` files are intentionally invalid placeholders. The real files are required by `docker compose up`.

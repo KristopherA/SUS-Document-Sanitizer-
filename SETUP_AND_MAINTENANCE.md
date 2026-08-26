@@ -4,7 +4,7 @@ This guide covers installing, operating, upgrading, and rolling back the generic
 
 ## 1. Understand what is stored
 
-The service consists of a web sanitizer, ClamAV, and an nginx proxy. The HTTPS configuration adds a second nginx proxy for TLS.
+The service consists of a web sanitizer, ClamAV, and an nginx TLS proxy, all defined in one `compose.yaml` file.
 
 - Uploaded and rebuilt documents exist only in the sanitizer container's temporary in-memory filesystem and are deleted after processing.
 - ClamAV signatures persist in the Docker volume named `clamav_signatures`.
@@ -36,21 +36,9 @@ Do not publish this unauthenticated service directly to the public internet.
 
 ## 3. Initial setup
 
-### Local-only HTTP setup
-
-Validate and start the default service:
-
-```sh
-docker compose config --quiet
-docker compose up --build -d
-docker compose ps
-```
-
-The first start may take several minutes while ClamAV retrieves and loads signatures. When all services are healthy, open `http://localhost:8080` on the host.
-
-The default proxy listens only on `127.0.0.1`. To make HTTP available on a trusted internal network, set `SANITIZER_BIND_ADDRESS`, `SANITIZER_HTTP_HOSTNAME`, and `SANITIZER_TRUSTED_HOSTS` together. HTTPS is preferred for normal staff use.
-
 ### HTTPS setup
+
+The single `compose.yaml` file defines the complete service. A valid TLS certificate is required before startup.
 
 Install the real certificate using these exact names:
 
@@ -62,9 +50,13 @@ certs/privkey.pem
 Set host permissions so the key is not generally readable:
 
 ```sh
+chown root:root certs/fullchain.pem
 chmod 0644 certs/fullchain.pem
-chmod 0600 certs/privkey.pem
+chown root:101 certs/privkey.pem
+chmod 0640 certs/privkey.pem
 ```
+
+Group `101` allows the unprivileged nginx container to read the key without making it generally readable.
 
 Validate that the certificate and key contain the same public key:
 
@@ -78,9 +70,12 @@ The two hashes must match.
 Create the DNS record before starting HTTPS. Then start the HTTPS deployment, replacing the sample hostname with the real one:
 
 ```sh
-SANITIZER_HOSTNAME=sanitizer.example.org docker compose -f compose.yaml -f compose.https.yaml config --quiet
-SANITIZER_HOSTNAME=sanitizer.example.org docker compose -f compose.yaml -f compose.https.yaml up --build -d
+SANITIZER_HOSTNAME=sanitizer.example.org SANITIZER_BIND_ADDRESS=0.0.0.0 docker compose config --quiet
+SANITIZER_HOSTNAME=sanitizer.example.org SANITIZER_BIND_ADDRESS=0.0.0.0 docker compose up --build -d
+docker compose ps
 ```
+
+The first start may take several minutes while ClamAV retrieves and loads signatures. When all services are healthy, open the configured HTTPS hostname.
 
 Allow inbound TCP ports 80 and 443 only from the intended network. Do not expose port 8080 externally when using the TLS proxy.
 
@@ -92,14 +87,6 @@ After setup or any upgrade:
 docker compose ps
 docker compose logs --tail 100 sanitizer clamav
 ```
-
-For local HTTP:
-
-```sh
-curl -fsS http://127.0.0.1:8080/health
-```
-
-For HTTPS:
 
 ```sh
 curl -fsS https://sanitizer.example.org/health
@@ -136,14 +123,8 @@ Investigate immediately if ClamAV is unhealthy, signatures stop updating, disk s
 
 ```sh
 docker compose ps
-docker compose logs --since 7d --no-color sanitizer clamav http-proxy
+docker compose logs --since 7d --no-color sanitizer clamav tls-proxy
 docker system df
-```
-
-For an HTTPS deployment, also review the TLS proxy:
-
-```sh
-docker compose -f compose.yaml -f compose.https.yaml logs --since 7d --no-color tls-proxy
 ```
 
 Review errors, rejected processing jobs, resource pressure, restart loops, and certificate warnings. Do not collect or retain uploaded documents for troubleshooting unless the organization's handling policy explicitly permits it.
@@ -213,9 +194,9 @@ Container bases are digest-pinned:
 
 - Python in `Dockerfile`.
 - ClamAV in `Dockerfile.clamav`.
-- nginx in both `compose.yaml` and `compose.https.yaml`.
+- nginx in `compose.yaml`.
 
-To upgrade one, select a supported upstream release, obtain its current digest from the official registry, and update both the tag and digest. Keep the nginx reference identical in both Compose files. Never remove digest pinning merely to obtain automatic updates.
+To upgrade one, select a supported upstream release, obtain its current digest from the official registry, and update both the tag and digest. Never remove digest pinning merely to obtain automatic updates.
 
 LibreOffice, Ghostscript, qpdf, and system libraries come from the pinned Python base distribution. A no-cache rebuild installs the current packages available for that base. Move to a newer supported base deliberately when the existing distribution approaches end of support.
 
@@ -223,7 +204,6 @@ LibreOffice, Ghostscript, qpdf, and system libraries come from the pinned Python
 
 ```sh
 docker compose config --quiet
-docker compose -f compose.yaml -f compose.https.yaml config --quiet
 python3 -m unittest discover -s tests -v
 ```
 
@@ -247,16 +227,8 @@ Do not deploy unless every test passes.
 
 ### Step 6: Deploy during a maintenance window
 
-For local HTTP:
-
 ```sh
-docker compose up -d
-```
-
-For HTTPS, using the real hostname:
-
-```sh
-SANITIZER_HOSTNAME=sanitizer.example.org docker compose -f compose.yaml -f compose.https.yaml up -d
+SANITIZER_HOSTNAME=sanitizer.example.org SANITIZER_BIND_ADDRESS=0.0.0.0 docker compose up -d
 ```
 
 Wait for ClamAV and the sanitizer to become healthy, then perform all acceptance checks.
@@ -276,7 +248,7 @@ Do not use `docker system prune --volumes`; it can remove recovery material and 
 5. Recreate only the TLS proxy so it opens the new certificate files:
 
 ```sh
-SANITIZER_HOSTNAME=sanitizer.example.org docker compose -f compose.yaml -f compose.https.yaml up -d --force-recreate tls-proxy
+SANITIZER_HOSTNAME=sanitizer.example.org SANITIZER_BIND_ADDRESS=0.0.0.0 docker compose up -d --force-recreate tls-proxy
 ```
 
 6. Confirm the served certificate dates with `openssl s_client` and test the HTTPS health endpoint.
@@ -329,7 +301,7 @@ Check whether ClamAV is healthy, whether container limits are being reached, and
 ### HTTPS fails
 
 ```sh
-docker compose -f compose.yaml -f compose.https.yaml logs --tail 200 tls-proxy
+docker compose logs --tail 200 tls-proxy
 openssl x509 -in certs/fullchain.pem -noout -subject -issuer -dates
 ```
 

@@ -13,14 +13,17 @@ from .sanitizer import sanitize
 
 
 MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", str(50 * 1024 * 1024)))
-MAX_FORM_MEMORY_BYTES = int(os.getenv("MAX_FORM_MEMORY_BYTES", str(64 * 1024)))
+MAX_REQUEST_BYTES = int(os.getenv("MAX_REQUEST_BYTES", str(64 * 1024 * 1024)))
+MAX_FORM_MEMORY_BYTES = int(os.getenv("MAX_FORM_MEMORY_BYTES", "500000"))
 MAX_FORM_PARTS = int(os.getenv("MAX_FORM_PARTS", "4"))
 TRUSTED_HOSTS = [host.strip() for host in os.getenv("TRUSTED_HOSTS", "localhost,127.0.0.1").split(",") if host.strip()]
 
 
 def create_app() -> Flask:
     app = Flask(__name__)
-    app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_BYTES
+    if MAX_REQUEST_BYTES <= MAX_UPLOAD_BYTES:
+        raise RuntimeError("MAX_REQUEST_BYTES must be greater than MAX_UPLOAD_BYTES")
+    app.config["MAX_CONTENT_LENGTH"] = MAX_REQUEST_BYTES
     app.config["MAX_FORM_MEMORY_SIZE"] = MAX_FORM_MEMORY_BYTES
     app.config["MAX_FORM_PARTS"] = MAX_FORM_PARTS
     app.config["TRUSTED_HOSTS"] = TRUSTED_HOSTS
@@ -55,6 +58,14 @@ def create_app() -> Flask:
         source = work_dir / "incoming"
         uploaded.save(source)
 
+        if source.stat().st_size > MAX_UPLOAD_BYTES:
+            temp_dir.cleanup()
+            return render_template(
+                "index.html",
+                error=f"The document is larger than the {MAX_UPLOAD_BYTES // (1024 * 1024)} MB limit.",
+                max_size_mb=MAX_UPLOAD_BYTES // (1024 * 1024),
+            ), 413
+
         try:
             document_format = detect(source, uploaded.filename)
             destination = work_dir / f"clean{document_format.extension}"
@@ -83,9 +94,17 @@ def create_app() -> Flask:
 
     @app.errorhandler(RequestEntityTooLarge)
     def too_large(_error):
+        request_size = request.content_length
+        if request_size is not None and request_size > MAX_REQUEST_BYTES:
+            message = (
+                f"The upload request is larger than the {MAX_REQUEST_BYTES // (1024 * 1024)} MB request limit. "
+                f"Documents are limited to {MAX_UPLOAD_BYTES // (1024 * 1024)} MB."
+            )
+        else:
+            message = "The upload form could not be parsed safely. The document was not processed."
         return render_template(
             "index.html",
-            error=f"The document is larger than the {MAX_UPLOAD_BYTES // (1024 * 1024)} MB limit.",
+            error=message,
             max_size_mb=MAX_UPLOAD_BYTES // (1024 * 1024),
         ), 413
 

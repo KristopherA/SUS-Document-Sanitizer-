@@ -51,6 +51,42 @@ class SanitizationResponseTests(unittest.TestCase):
         self.assertEqual(response.headers["X-Sanitization-Status"], "clean")
         self.assertEqual(response.headers["X-Sanitization-Findings"], "")
 
+    def test_twenty_megabyte_document_is_below_upload_limit(self):
+        def fake_sanitize(_source, destination, _document_format):
+            destination.write_bytes(b"%PDF-1.7\nclean")
+            return []
+
+        document = b"%PDF-1.7\n" + b"x" * (20 * 1024 * 1024)
+        with patch("app.web.sanitize", side_effect=fake_sanitize):
+            response = self.client.post(
+                "/sanitize",
+                data={"document": (BytesIO(document), "large-report.pdf")},
+                content_type="multipart/form-data",
+            )
+        self.addCleanup(response.close)
+        self.addCleanup(response.request.input_stream.close)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, b"%PDF-1.7\nclean")
+
+    def test_document_size_is_enforced_after_multipart_parsing(self):
+        one_megabyte = 1024 * 1024
+        with (
+            patch("app.web.MAX_UPLOAD_BYTES", one_megabyte),
+            patch("app.web.sanitize") as sanitize_mock,
+        ):
+            response = self.client.post(
+                "/sanitize",
+                data={"document": (BytesIO(b"%PDF-1.7\n" + b"x" * (2 * one_megabyte)), "oversized.pdf")},
+                content_type="multipart/form-data",
+            )
+        self.addCleanup(response.close)
+        self.addCleanup(response.request.input_stream.close)
+
+        self.assertEqual(response.status_code, 413)
+        self.assertIn(b"larger than the 1 MB limit", response.data)
+        sanitize_mock.assert_not_called()
+
     def test_picker_offers_drag_and_drop(self):
         response = self.client.get("/")
 
