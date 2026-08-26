@@ -1,4 +1,4 @@
-# Document Sanitizer
+# SUS Document Sanitizer
 
 A small, unauthenticated internal web service for uploading a suspicious document and downloading a reconstructed version in the same modern document format.
 
