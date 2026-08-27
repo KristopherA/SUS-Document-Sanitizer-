@@ -2,3 +2,10 @@
 certs/*
 !certs/README.md
 !certs/*.example
+
+# macOS metadata.
+.DS_Store
+
+# Python bytecode caches.
+__pycache__/
+*.py[cod]
