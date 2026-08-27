@@ -1,3 +1,4 @@
+import hashlib
 import unittest
 from io import BytesIO
 from unittest.mock import patch
@@ -32,6 +33,16 @@ class SanitizationResponseTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers["X-Sanitization-Status"], "clean")
         self.assertEqual(response.headers["X-Sanitization-Findings"], "PDF JavaScript, PDF launch actions")
+        self.assertEqual(
+            response.headers["X-Original-SHA256"],
+            hashlib.sha256(b"%PDF-1.7\nsource").hexdigest(),
+        )
+        self.assertEqual(
+            response.headers["X-Clean-SHA256"],
+            hashlib.sha256(b"%PDF-1.7\nclean").hexdigest(),
+        )
+        self.assertEqual(response.headers["X-Original-Size"], str(len(b"%PDF-1.7\nsource")))
+        self.assertRegex(response.headers["X-Sanitization-Time"], r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
         self.assertEqual(response.data, b"%PDF-1.7\nclean")
 
     def test_clean_download_can_report_no_active_content(self):
@@ -97,6 +108,12 @@ class SanitizationResponseTests(unittest.TestCase):
             b'id="systems-notice" class="systems-notice" role="alert" hidden',
             response.data,
         )
+        self.assertIn(
+            b'id="incident-report" class="incident-report" aria-labelledby="incident-report-title" hidden',
+            response.data,
+        )
+        self.assertIn(b'id="copy-report-button"', response.data)
+        self.assertIn(b"Copy this report", response.data)
 
     def test_malware_detection_shows_systems_analysis_notice(self):
         with patch("app.web.sanitize", side_effect=MalwareDetected("Malware was detected.")):
@@ -111,6 +128,14 @@ class SanitizationResponseTests(unittest.TestCase):
             b'id="systems-notice" class="systems-notice" role="alert">The original document should be sent to Systems for further analysis.',
             response.data,
         )
+        self.assertIn(b"Document Sanitizer Incident Report", response.data)
+        self.assertIn(
+            b'id="incident-report" class="incident-report" aria-labelledby="incident-report-title">',
+            response.data,
+        )
+        self.assertIn(b"Outcome: Rejected because antivirus detected malware", response.data)
+        self.assertIn(hashlib.sha256(b"%PDF-1.7\nsource").hexdigest().encode(), response.data)
+        self.assertIn(b"Recommended action: The original document should be sent to Systems", response.data)
 
     def test_unsanitizable_document_shows_discard_notice(self):
         with patch("app.web.sanitize", side_effect=ProcessingFailed("The document could not be rebuilt safely.")):

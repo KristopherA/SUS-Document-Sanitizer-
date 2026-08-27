@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import hashlib
 import os
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 from flask import Flask, after_this_request, render_template, request, send_file
@@ -17,6 +19,42 @@ MAX_REQUEST_BYTES = int(os.getenv("MAX_REQUEST_BYTES", str(64 * 1024 * 1024)))
 MAX_FORM_MEMORY_BYTES = int(os.getenv("MAX_FORM_MEMORY_BYTES", "500000"))
 MAX_FORM_PARTS = int(os.getenv("MAX_FORM_PARTS", "4"))
 TRUSTED_HOSTS = [host.strip() for host in os.getenv("TRUSTED_HOSTS", "localhost,127.0.0.1").split(",") if host.strip()]
+SYSTEMS_INSTRUCTION = "The original document should be sent to Systems for further analysis."
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as document:
+        while chunk := document.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _report_filename(filename: str) -> str:
+    basename = Path(filename.replace("\\", "/")).name
+    printable = "".join(character for character in basename if character.isprintable())
+    return printable[:255] or "document"
+
+
+def _rejection_report(
+    filename: str,
+    size: int,
+    sha256: str,
+    detected_at: str,
+    details: str,
+) -> str:
+    return "\n".join(
+        (
+            "Document Sanitizer Incident Report",
+            f"Detection time (UTC): {detected_at}",
+            f"Original filename: {_report_filename(filename)}",
+            f"Original size: {size} bytes",
+            f"Original SHA-256: {sha256}",
+            "Outcome: Rejected because antivirus detected malware",
+            f"Details: {details}",
+            f"Recommended action: {SYSTEMS_INSTRUCTION}",
+        )
+    )
 
 
 def create_app() -> Flask:
@@ -58,13 +96,17 @@ def create_app() -> Flask:
         source = work_dir / "incoming"
         uploaded.save(source)
 
-        if source.stat().st_size > MAX_UPLOAD_BYTES:
+        original_size = source.stat().st_size
+        if original_size > MAX_UPLOAD_BYTES:
             temp_dir.cleanup()
             return render_template(
                 "index.html",
                 error=f"The document is larger than the {MAX_UPLOAD_BYTES // (1024 * 1024)} MB limit.",
                 max_size_mb=MAX_UPLOAD_BYTES // (1024 * 1024),
             ), 413
+
+        detected_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        original_sha256 = _sha256(source)
 
         try:
             document_format = detect(source, uploaded.filename)
@@ -78,6 +120,13 @@ def create_app() -> Flask:
                 danger=True,
                 discard=True,
                 systems_notice=True,
+                incident_report=_rejection_report(
+                    uploaded.filename,
+                    original_size,
+                    original_sha256,
+                    detected_at,
+                    str(exc),
+                ),
                 max_size_mb=MAX_UPLOAD_BYTES // (1024 * 1024),
             ), 422
         except ScannerUnavailable as exc:
@@ -97,6 +146,10 @@ def create_app() -> Flask:
         response = send_file(destination, as_attachment=True, download_name=download_name, max_age=0)
         response.headers["X-Sanitization-Status"] = "clean"
         response.headers["X-Sanitization-Findings"] = ", ".join(findings)
+        response.headers["X-Sanitization-Time"] = detected_at
+        response.headers["X-Original-Size"] = str(original_size)
+        response.headers["X-Original-SHA256"] = original_sha256
+        response.headers["X-Clean-SHA256"] = _sha256(destination)
         return response
 
     @app.errorhandler(RequestEntityTooLarge)

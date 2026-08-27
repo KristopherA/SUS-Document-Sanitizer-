@@ -16,6 +16,7 @@ The service is intentionally fail-closed: if antivirus is unavailable, the file 
 6. Expands and inspects reconstructed PDFs for JavaScript, automatic actions, launch actions, embedded files, XFA, and rich media.
 7. Structurally validates the result and scans it with ClamAV again.
 8. Returns the clean file and deletes both temporary copies after the response.
+9. When unsafe elements are found, displays a copyable incident report with the original and cleaned SHA-256 hashes, detected elements, outcome, and UTC timestamp for Systems follow-up.
 
 Supported formats: `.pdf`, `.docx`, `.xlsx`, `.pptx`, `.odt`, `.ods`, and `.odp`.
 

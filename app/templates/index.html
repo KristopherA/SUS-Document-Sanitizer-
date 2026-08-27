@@ -25,6 +25,15 @@
       {% endif %}
       <div id="status-message" class="message" role="status" hidden></div>
       <div id="systems-notice" class="systems-notice" role="alert"{% if not systems_notice %} hidden{% endif %}>The original document should be sent to Systems for further analysis.</div>
+      <section id="incident-report" class="incident-report" aria-labelledby="incident-report-title"{% if not incident_report %} hidden{% endif %}>
+        <h2 id="incident-report-title">Incident report</h2>
+        <p>Copy this report and include it when sending the original document to Systems.</p>
+        <textarea id="incident-report-text" rows="10" readonly>{{ incident_report or '' }}</textarea>
+        <div class="incident-report-actions">
+          <button id="copy-report-button" class="copy-report-button" type="button">Copy report</button>
+          <span id="copy-report-status" role="status" hidden></span>
+        </div>
+      </section>
 
       <form id="sanitize-form" action="{{ url_for('sanitize_upload') }}" method="post" enctype="multipart/form-data">
         <label id="drop-zone" class="picker">

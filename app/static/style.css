@@ -106,6 +106,31 @@ button:focus-visible, input:focus-visible { outline: 3px solid #9bc3eb; outline-
   font-weight: 750;
   line-height: 1.45;
 }
+.incident-report {
+  margin: 0 0 22px;
+  padding: 18px;
+  border: 1px solid #b8c5bf;
+  border-radius: 12px;
+  background: #f7faf8;
+  text-align: left;
+}
+.incident-report h2 { margin: 0; font-size: 1.1rem; }
+.incident-report p { margin: 7px 0 12px; color: #5b6862; font-size: 0.84rem; line-height: 1.45; }
+.incident-report textarea {
+  display: block;
+  width: 100%;
+  min-height: 210px;
+  resize: vertical;
+  padding: 12px;
+  border: 1px solid #aebdb6;
+  border-radius: 8px;
+  color: #17202a;
+  background: #fff;
+  font: 0.78rem/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.incident-report-actions { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+.copy-report-button { padding: 10px 14px; font-size: 0.86rem; }
+#copy-report-status { color: #155f3d; font-size: 0.82rem; font-weight: 700; }
 .discard-notice {
   margin: -12px 0 22px;
   padding: 13px 16px;
