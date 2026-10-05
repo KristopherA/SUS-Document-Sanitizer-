@@ -3,7 +3,7 @@
 const sanitizeForm = document.getElementById("sanitize-form");
 const sanitizeButton = document.getElementById("sanitize-button");
 const statusMessage = document.getElementById("status-message");
-const systemsNotice = document.getElementById("systems-notice");
+const securityTeamNotice = document.getElementById("security-team-notice");
 const incidentReport = document.getElementById("incident-report");
 const incidentReportText = document.getElementById("incident-report-text");
 const copyReportButton = document.getElementById("copy-report-button");
@@ -93,7 +93,7 @@ if (sanitizeForm && sanitizeButton) {
   sanitizeForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     if (statusMessage) statusMessage.hidden = true;
-    if (systemsNotice) systemsNotice.hidden = true;
+    if (securityTeamNotice) securityTeamNotice.hidden = true;
     if (incidentReport) incidentReport.hidden = true;
     if (incidentReportText) incidentReportText.value = "";
     if (copyReportStatus) copyReportStatus.hidden = true;
@@ -111,9 +111,9 @@ if (sanitizeForm && sanitizeButton) {
         const errorPage = new DOMParser().parseFromString(await response.text(), "text/html");
         const serverMessage = errorPage.querySelector(".message")?.textContent?.trim();
         const discardNotice = errorPage.querySelector(".discard-notice")?.textContent?.trim();
-        const systemsNoticeText = errorPage.querySelector(".systems-notice:not([hidden])")?.textContent?.trim();
+        const securityTeamNoticeText = errorPage.querySelector(".security-team-notice:not([hidden])")?.textContent?.trim();
         const rejectionReport = errorPage.querySelector("#incident-report-text")?.value?.trim();
-        if (systemsNoticeText && systemsNotice) systemsNotice.hidden = false;
+        if (securityTeamNoticeText && securityTeamNotice) securityTeamNotice.hidden = false;
         if (rejectionReport) showIncidentReport(rejectionReport);
         throw new Error(
           [serverMessage, discardNotice].filter(Boolean).join(" ") || "The document could not be sanitized.",
@@ -136,7 +136,7 @@ if (sanitizeForm && sanitizeButton) {
       dropZone?.classList.remove("dragging");
       if (findings) {
         showStatus(`Document cleaned and downloaded. Issues found and removed: ${findings}.`, "success");
-        if (systemsNotice) systemsNotice.hidden = false;
+        if (securityTeamNotice) securityTeamNotice.hidden = false;
         showIncidentReport(
           [
             "Document Sanitizer Incident Report",
@@ -148,7 +148,7 @@ if (sanitizeForm && sanitizeButton) {
             `Cleaned SHA-256: ${safeReportValue(response.headers.get("X-Clean-SHA256"))}`,
             "Outcome: Active or potentially unsafe elements were removed; a cleaned copy was downloaded",
             `Issues found and removed: ${safeReportValue(findings)}`,
-            "Recommended action: The original document should be sent to Systems for further analysis.",
+            "Recommended action: The original document should be sent to your IT or security team for further analysis.",
           ].join("\n"),
         );
       } else {

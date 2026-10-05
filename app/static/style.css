@@ -96,7 +96,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid #9bc3eb; outline-
 
 .message.danger { border-color: #df8b8b; color: #761b1b; background: #fff1f1; }
 .message.success { border-color: #8fc5a8; color: #155f3d; background: #eff9f3; }
-.systems-notice {
+.security-team-notice {
   margin: -10px 0 22px;
   padding: 14px 16px;
   border: 2px solid #d18b18;

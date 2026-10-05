@@ -105,7 +105,7 @@ class SanitizationResponseTests(unittest.TestCase):
         self.assertIn(b'id="drop-zone"', response.data)
         self.assertIn(b"or drag and drop it here", response.data)
         self.assertIn(
-            b'id="systems-notice" class="systems-notice" role="alert" hidden',
+            b'id="security-team-notice" class="security-team-notice" role="alert" hidden',
             response.data,
         )
         self.assertIn(
@@ -115,7 +115,7 @@ class SanitizationResponseTests(unittest.TestCase):
         self.assertIn(b'id="copy-report-button"', response.data)
         self.assertIn(b"Copy this report", response.data)
 
-    def test_malware_detection_shows_systems_analysis_notice(self):
+    def test_malware_detection_shows_security_team_analysis_notice(self):
         with patch("app.web.sanitize", side_effect=MalwareDetected("Malware was detected.")):
             response = self.client.post(
                 "/sanitize",
@@ -125,7 +125,7 @@ class SanitizationResponseTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 422)
         self.assertIn(
-            b'id="systems-notice" class="systems-notice" role="alert">The original document should be sent to Systems for further analysis.',
+            b'id="security-team-notice" class="security-team-notice" role="alert">The original document should be sent to your IT or security team for further analysis.',
             response.data,
         )
         self.assertIn(b"Document Sanitizer Incident Report", response.data)
@@ -135,7 +135,7 @@ class SanitizationResponseTests(unittest.TestCase):
         )
         self.assertIn(b"Outcome: Rejected because antivirus detected malware", response.data)
         self.assertIn(hashlib.sha256(b"%PDF-1.7\nsource").hexdigest().encode(), response.data)
-        self.assertIn(b"Recommended action: The original document should be sent to Systems", response.data)
+        self.assertIn(b"Recommended action: The original document should be sent to your IT or security team", response.data)
 
     def test_unsanitizable_document_shows_discard_notice(self):
         with patch("app.web.sanitize", side_effect=ProcessingFailed("The document could not be rebuilt safely.")):

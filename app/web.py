@@ -19,7 +19,7 @@ MAX_REQUEST_BYTES = int(os.getenv("MAX_REQUEST_BYTES", str(64 * 1024 * 1024)))
 MAX_FORM_MEMORY_BYTES = int(os.getenv("MAX_FORM_MEMORY_BYTES", "500000"))
 MAX_FORM_PARTS = int(os.getenv("MAX_FORM_PARTS", "4"))
 TRUSTED_HOSTS = [host.strip() for host in os.getenv("TRUSTED_HOSTS", "localhost,127.0.0.1").split(",") if host.strip()]
-SYSTEMS_INSTRUCTION = "The original document should be sent to Systems for further analysis."
+SECURITY_TEAM_INSTRUCTION = "The original document should be sent to your IT or security team for further analysis."
 
 
 def _sha256(path: Path) -> str:
@@ -52,7 +52,7 @@ def _rejection_report(
             f"Original SHA-256: {sha256}",
             "Outcome: Rejected because antivirus detected malware",
             f"Details: {details}",
-            f"Recommended action: {SYSTEMS_INSTRUCTION}",
+            f"Recommended action: {SECURITY_TEAM_INSTRUCTION}",
         )
     )
 
@@ -119,7 +119,7 @@ def create_app() -> Flask:
                 error=str(exc),
                 danger=True,
                 discard=True,
-                systems_notice=True,
+                security_team_notice=True,
                 incident_report=_rejection_report(
                     uploaded.filename,
                     original_size,
