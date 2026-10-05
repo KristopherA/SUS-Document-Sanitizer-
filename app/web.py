@@ -41,6 +41,7 @@ def _rejection_report(
     size: int,
     sha256: str,
     detected_at: str,
+    outcome: str,
     details: str,
 ) -> str:
     return "\n".join(
@@ -50,7 +51,7 @@ def _rejection_report(
             f"Original filename: {_report_filename(filename)}",
             f"Original size: {size} bytes",
             f"Original SHA-256: {sha256}",
-            "Outcome: Rejected because antivirus detected malware",
+            f"Outcome: {outcome}",
             f"Details: {details}",
             f"Recommended action: {SECURITY_TEAM_INSTRUCTION}",
         )
@@ -125,16 +126,42 @@ def create_app() -> Flask:
                     original_size,
                     original_sha256,
                     detected_at,
+                    "Rejected because antivirus detected malware",
                     str(exc),
                 ),
                 max_size_mb=MAX_UPLOAD_BYTES // (1024 * 1024),
             ), 422
         except ScannerUnavailable as exc:
             temp_dir.cleanup()
-            return render_template("index.html", error=str(exc), max_size_mb=MAX_UPLOAD_BYTES // (1024 * 1024)), 422
+            return render_template(
+                "index.html",
+                error=str(exc),
+                incident_report=_rejection_report(
+                    uploaded.filename,
+                    original_size,
+                    original_sha256,
+                    detected_at,
+                    "Not processed because the antivirus scanner was unavailable",
+                    str(exc),
+                ),
+                max_size_mb=MAX_UPLOAD_BYTES // (1024 * 1024),
+            ), 422
         except (UnsupportedDocument, SanitizationError) as exc:
             temp_dir.cleanup()
-            return render_template("index.html", error=str(exc), discard=True, max_size_mb=MAX_UPLOAD_BYTES // (1024 * 1024)), 422
+            return render_template(
+                "index.html",
+                error=str(exc),
+                discard=True,
+                incident_report=_rejection_report(
+                    uploaded.filename,
+                    original_size,
+                    original_sha256,
+                    detected_at,
+                    "Rejected because the document could not be sanitized safely",
+                    str(exc),
+                ),
+                max_size_mb=MAX_UPLOAD_BYTES // (1024 * 1024),
+            ), 422
 
         download_name = safe_download_name(uploaded.filename, document_format.extension)
 

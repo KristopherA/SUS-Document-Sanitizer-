@@ -115,6 +115,12 @@ class SanitizationResponseTests(unittest.TestCase):
         self.assertIn(b'id="copy-report-button"', response.data)
         self.assertIn(b"Copy this report", response.data)
 
+        script = self.client.get("/static/app.js")
+        self.addCleanup(script.close)
+        self.assertIn(b"Document Sanitizer Processing Report", script.data)
+        self.assertIn(b'Issues found and removed: ${safeReportValue(findings, "None detected")}', script.data)
+        self.assertIn(b'findings ? "Incident report" : "Processing report"', script.data)
+
     def test_malware_detection_shows_security_team_analysis_notice(self):
         with patch("app.web.sanitize", side_effect=MalwareDetected("Malware was detected.")):
             response = self.client.post(
@@ -148,6 +154,9 @@ class SanitizationResponseTests(unittest.TestCase):
         self.assertEqual(response.status_code, 422)
         self.assertIn(b"The document could not be rebuilt safely.", response.data)
         self.assertIn(b"Discard this document.", response.data)
+        self.assertIn(b"Document Sanitizer Incident Report", response.data)
+        self.assertIn(b"Outcome: Rejected because the document could not be sanitized safely", response.data)
+        self.assertIn(hashlib.sha256(b"%PDF-1.7\nsource").hexdigest().encode(), response.data)
 
     def test_scanner_outage_does_not_show_discard_notice(self):
         with patch("app.web.sanitize", side_effect=ScannerUnavailable("The scanner is temporarily unavailable.")):
@@ -160,6 +169,9 @@ class SanitizationResponseTests(unittest.TestCase):
         self.assertEqual(response.status_code, 422)
         self.assertIn(b"The scanner is temporarily unavailable.", response.data)
         self.assertNotIn(b"Discard this document.", response.data)
+        self.assertIn(b"Document Sanitizer Incident Report", response.data)
+        self.assertIn(b"Outcome: Not processed because the antivirus scanner was unavailable", response.data)
+        self.assertIn(hashlib.sha256(b"%PDF-1.7\nsource").hexdigest().encode(), response.data)
 
 
 if __name__ == "__main__":

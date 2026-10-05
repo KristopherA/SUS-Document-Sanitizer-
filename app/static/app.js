@@ -5,6 +5,7 @@ const sanitizeButton = document.getElementById("sanitize-button");
 const statusMessage = document.getElementById("status-message");
 const securityTeamNotice = document.getElementById("security-team-notice");
 const incidentReport = document.getElementById("incident-report");
+const incidentReportTitle = document.getElementById("incident-report-title");
 const incidentReportText = document.getElementById("incident-report-text");
 const copyReportButton = document.getElementById("copy-report-button");
 const copyReportStatus = document.getElementById("copy-report-status");
@@ -29,8 +30,9 @@ function safeReportValue(value, fallback = "Unavailable") {
   return normalized || fallback;
 }
 
-function showIncidentReport(report) {
+function showIncidentReport(report, heading = "Incident report") {
   if (!incidentReport || !incidentReportText) return;
+  if (incidentReportTitle) incidentReportTitle.textContent = heading;
   incidentReportText.value = report;
   incidentReport.hidden = false;
   if (copyReportStatus) copyReportStatus.hidden = true;
@@ -134,23 +136,32 @@ if (sanitizeForm && sanitizeButton) {
 
       sanitizeForm.reset();
       dropZone?.classList.remove("dragging");
+      const reportTitle = findings ? "Document Sanitizer Incident Report" : "Document Sanitizer Processing Report";
+      const reportOutcome = findings
+        ? "Active or potentially unsafe elements were removed; a cleaned copy was downloaded"
+        : "No active content was detected; a rebuilt and antivirus-scanned copy was downloaded";
+      const recommendedAction = findings
+        ? "The original document should be sent to your IT or security team for further analysis."
+        : "Use the cleaned copy in place of the original document.";
+      showIncidentReport(
+        [
+          reportTitle,
+          `Detection time (UTC): ${safeReportValue(response.headers.get("X-Sanitization-Time"))}`,
+          `Original filename: ${safeReportValue(originalFile?.name, "document")}`,
+          `Original size: ${safeReportValue(response.headers.get("X-Original-Size"), String(originalFile?.size || "Unavailable"))} bytes`,
+          `Original SHA-256: ${safeReportValue(response.headers.get("X-Original-SHA256"))}`,
+          `Cleaned filename: ${safeReportValue(cleanFilename)}`,
+          `Cleaned SHA-256: ${safeReportValue(response.headers.get("X-Clean-SHA256"))}`,
+          "Antivirus result: The original and cleaned documents passed antivirus scanning",
+          `Outcome: ${reportOutcome}`,
+          `Issues found and removed: ${safeReportValue(findings, "None detected")}`,
+          `Recommended action: ${recommendedAction}`,
+        ].join("\n"),
+        findings ? "Incident report" : "Processing report",
+      );
       if (findings) {
         showStatus(`Document cleaned and downloaded. Issues found and removed: ${findings}.`, "success");
         if (securityTeamNotice) securityTeamNotice.hidden = false;
-        showIncidentReport(
-          [
-            "Document Sanitizer Incident Report",
-            `Detection time (UTC): ${safeReportValue(response.headers.get("X-Sanitization-Time"))}`,
-            `Original filename: ${safeReportValue(originalFile?.name, "document")}`,
-            `Original size: ${safeReportValue(response.headers.get("X-Original-Size"), String(originalFile?.size || "Unavailable"))} bytes`,
-            `Original SHA-256: ${safeReportValue(response.headers.get("X-Original-SHA256"))}`,
-            `Cleaned filename: ${safeReportValue(cleanFilename)}`,
-            `Cleaned SHA-256: ${safeReportValue(response.headers.get("X-Clean-SHA256"))}`,
-            "Outcome: Active or potentially unsafe elements were removed; a cleaned copy was downloaded",
-            `Issues found and removed: ${safeReportValue(findings)}`,
-            "Recommended action: The original document should be sent to your IT or security team for further analysis.",
-          ].join("\n"),
-        );
       } else {
         showStatus(
           "Document cleaned and downloaded. No active content was detected; the rebuilt document passed antivirus scanning.",
